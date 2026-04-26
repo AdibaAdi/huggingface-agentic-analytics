@@ -27,7 +27,7 @@ with st.sidebar:
     st.header("Setup / Status")
     st.write(f"Database URL set: {'Yes' if cfg.database_url else 'No'}")
     st.write(f"OPENAI_API_KEY set: {'Yes' if cfg.has_openai else 'No'}")
-    st.write(f"HF_TOKEN set: {'Yes' if cfg.has_hf_token else 'No'}")
+    st.write(f"HUGGINGFACE_API_TOKEN set: {'Yes' if cfg.has_hf_token else 'No'}")
     st.write("Tracked tags:")
     st.code("\n".join(cfg.hf_tags))
 
@@ -81,13 +81,12 @@ if st.button("Run Query"):
         "chart_downloads_per_model",
         "chart_closed_discussions_per_week",
         "chart_open_closed_per_model",
-    }
-    forecast_actions = {
         "forecast_created_discussions",
         "forecast_closed_discussions",
         "forecast_pull_requests",
         "forecast_commits",
     }
+    result_rendered = False
 
     if route.action in text_actions:
         text_answer, table_df = cached_query(route.action)
@@ -99,6 +98,7 @@ if st.button("Run Query"):
             st.info("No table data to display.")
         else:
             st.dataframe(table_df.to_pandas(), use_container_width=True)
+        result_rendered = True
 
     elif route.action in chart_actions:
         chart_mapping = {
@@ -109,33 +109,40 @@ if st.button("Run Query"):
             "chart_closed_discussions_per_week": charts.bar_closed_discussions_per_week,
             "chart_open_closed_per_model": charts.stacked_open_closed_per_model,
         }
-        fig = chart_mapping[route.action]()
-        if fig:
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No chart data available. Run ingestion first or choose another prompt.")
-
-    elif route.action in forecast_actions:
-        if not model_id.strip():
-            st.error("This forecast action requires a Model ID. Please provide one and run again.")
+        if route.action in {
+            "forecast_created_discussions",
+            "forecast_closed_discussions",
+            "forecast_pull_requests",
+            "forecast_commits",
+        } and not model_id.strip():
+            st.error(
+                "This forecast action requires a Model ID. Please enter a model ID in the sidebar field and run again."
+            )
             st.stop()
 
         if route.action == "forecast_created_discussions":
             fig = charts.prophet_forecast_created_per_model(model_id)
-            note = "Prophet forecast for created discussions."
+            st.info("Prophet forecast for created discussions.")
         elif route.action == "forecast_closed_discussions":
             fig = charts.prophet_forecast_closed_per_model(model_id)
-            note = "Prophet forecast for closed discussions."
+            st.info("Prophet forecast for closed discussions.")
         elif route.action == "forecast_pull_requests":
             fig, note = charts.statsmodels_placeholder_forecast(model_id, metric="pull_requests")
-        else:
+            st.info(note)
+        elif route.action == "forecast_commits":
             fig, note = charts.statsmodels_placeholder_forecast(model_id, metric="commits")
+            st.info(note)
+        else:
+            fig = chart_mapping[route.action]()
 
-        st.info(note)
         if fig:
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("Not enough data to render this forecast.")
+            st.info("No chart data available for the selected action. Run ingestion first or try another prompt.")
+        result_rendered = True
 
     else:
         st.error("Unsupported action selected by router.")
+
+    if result_rendered:
+        st.caption("This result was generated through LLM-based routing and database-backed analytics.")
