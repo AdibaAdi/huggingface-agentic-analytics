@@ -21,7 +21,7 @@ def cached_query(action: str):
 
 
 st.title("Hugging Face Agentic Analytics")
-st.caption("Bonus Assignment 1 + Bonus Assignment 2 starter app")
+st.caption("Natural language -> LLM router -> deterministic analytics action")
 
 with st.sidebar:
     st.header("Setup / Status")
@@ -42,67 +42,100 @@ with st.sidebar:
                 st.error(f"Ingestion failed: {exc}")
 
 st.subheader("Ask a natural language question")
-
 examples = [
     "Which Hugging Face model repo has the highest number of Community Discussions created?",
-    "Create a table of total number of Discussions created for every repo for every day Monday-Sunday.",
-    "Which day of the week has the highest number of total Discussions created across all tracked repos?",
-    "Which day of the week has the highest number of total Discussions marked as Closed?",
+    "Create a table of total discussions created for every repo for every day Monday-Sunday.",
+    "Show a chart of closed discussions per week.",
+    "Forecast pull requests for model gpt2.",
 ]
-st.write("Suggested queries:")
+st.write("Example prompts (suggestions only):")
 for e in examples:
     st.markdown(f"- {e}")
 
-question = st.text_input("Natural language input", value=examples[0])
+question = st.text_input("Natural language prompt", placeholder="Type your own question...")
+model_id = st.text_input("Model ID (only needed for forecast actions)", value="")
+
 if st.button("Run Query"):
+    if not question.strip():
+        st.error("Please enter a natural language prompt before running the query.")
+        st.stop()
+
     route = route_question(question)
-    text_answer, table_df = cached_query(route.action)
+    st.caption(f"LLM selected action: `{route.action}`")
+    st.caption(f"Reason: {route.reason}")
 
-    st.markdown("### Text Answer")
-    st.write(text_answer)
-    st.caption(f"Router action: `{route.action}` — {route.reason}")
+    if route.action == "error":
+        st.error(route.reason)
+        st.stop()
 
-    st.markdown("### Table Output")
-    if table_df.is_empty():
-        st.info("No table data to display.")
+    text_actions = {
+        "highest_discussions",
+        "table_discussions_weekday",
+        "day_most_created",
+        "day_most_closed",
+    }
+    chart_actions = {
+        "chart_total_discussions_over_time",
+        "chart_discussions_distribution_by_model",
+        "chart_likes_per_model",
+        "chart_downloads_per_model",
+        "chart_closed_discussions_per_week",
+        "chart_open_closed_per_model",
+    }
+    forecast_actions = {
+        "forecast_created_discussions",
+        "forecast_closed_discussions",
+        "forecast_pull_requests",
+        "forecast_commits",
+    }
+
+    if route.action in text_actions:
+        text_answer, table_df = cached_query(route.action)
+        st.markdown("### Text Answer")
+        st.write(text_answer)
+
+        st.markdown("### Table Output")
+        if table_df.is_empty():
+            st.info("No table data to display.")
+        else:
+            st.dataframe(table_df.to_pandas(), use_container_width=True)
+
+    elif route.action in chart_actions:
+        chart_mapping = {
+            "chart_total_discussions_over_time": charts.line_total_discussions_over_time,
+            "chart_discussions_distribution_by_model": charts.pie_discussions_distribution_by_model,
+            "chart_likes_per_model": charts.bar_likes_per_model,
+            "chart_downloads_per_model": charts.bar_downloads_per_model,
+            "chart_closed_discussions_per_week": charts.bar_closed_discussions_per_week,
+            "chart_open_closed_per_model": charts.stacked_open_closed_per_model,
+        }
+        fig = chart_mapping[route.action]()
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No chart data available. Run ingestion first or choose another prompt.")
+
+    elif route.action in forecast_actions:
+        if not model_id.strip():
+            st.error("This forecast action requires a Model ID. Please provide one and run again.")
+            st.stop()
+
+        if route.action == "forecast_created_discussions":
+            fig = charts.prophet_forecast_created_per_model(model_id)
+            note = "Prophet forecast for created discussions."
+        elif route.action == "forecast_closed_discussions":
+            fig = charts.prophet_forecast_closed_per_model(model_id)
+            note = "Prophet forecast for closed discussions."
+        elif route.action == "forecast_pull_requests":
+            fig, note = charts.statsmodels_placeholder_forecast(model_id, metric="pull_requests")
+        else:
+            fig, note = charts.statsmodels_placeholder_forecast(model_id, metric="commits")
+
+        st.info(note)
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Not enough data to render this forecast.")
+
     else:
-        st.dataframe(table_df.to_pandas(), use_container_width=True)
-
-st.markdown("---")
-st.markdown("## Chart Output Section")
-
-line_fig = charts.line_total_discussions_over_time()
-pie_fig = charts.pie_discussions_distribution_by_model()
-likes_fig = charts.bar_likes_per_model()
-downloads_fig = charts.bar_downloads_per_model()
-closed_week_fig = charts.bar_closed_discussions_per_week()
-stacked_fig = charts.stacked_open_closed_per_model()
-
-for fig in [line_fig, pie_fig, likes_fig, downloads_fig, closed_week_fig, stacked_fig]:
-    if fig:
-        st.plotly_chart(fig, use_container_width=True)
-
-# Forecast charts (for selected model)
-model_id = st.text_input("Model ID for forecast charts", value="")
-if model_id:
-    created_fc = charts.prophet_forecast_created_per_model(model_id)
-    closed_fc = charts.prophet_forecast_closed_per_model(model_id)
-    pr_fc, pr_note = charts.statsmodels_placeholder_forecast(model_id, metric="pull_requests")
-    commit_fc, commit_note = charts.statsmodels_placeholder_forecast(model_id, metric="commits")
-
-    st.markdown("### Prophet Forecasts")
-    if created_fc:
-        st.plotly_chart(created_fc, use_container_width=True)
-    if closed_fc:
-        st.plotly_chart(closed_fc, use_container_width=True)
-
-    st.markdown("### Statsmodels Forecasts with Limitation/Fallback")
-    st.info(pr_note)
-    st.info(commit_note)
-    if pr_fc:
-        st.plotly_chart(pr_fc, use_container_width=True)
-    if commit_fc:
-        st.plotly_chart(commit_fc, use_container_width=True)
-
-if not cfg.has_openai:
-    st.warning("OPENAI_API_KEY missing. The app uses deterministic keyword routing fallback.")
+        st.error("Unsupported action selected by router.")
