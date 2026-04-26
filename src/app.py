@@ -133,12 +133,18 @@ if st.button("Run Query"):
             fig, note = charts.statsmodels_placeholder_forecast(model_id, metric="commits")
             st.info(note)
         else:
-            fig = chart_mapping[route.action]()
+            result = chart_mapping[route.action]()
+            if isinstance(result, tuple):
+                fig, message = result
+                if message:
+                    st.info(message)
+            else:
+                fig = result
 
         if fig:
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No chart data available for the selected action. Run ingestion first or try another prompt.")
+            st.warning("Not enough data available to generate this chart.")
         result_rendered = True
 
     else:
