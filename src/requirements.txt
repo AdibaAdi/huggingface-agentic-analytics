@@ -11,6 +11,6 @@ langchain-openai
 openai
 llama-index
 prophet
-statsmodels
+statsmodels==0.14.5
 plotly
 e2b-code-interpreter
