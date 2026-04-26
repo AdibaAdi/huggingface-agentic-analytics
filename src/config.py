@@ -21,7 +21,7 @@ class AppConfig:
     )
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    hf_token: str = os.getenv("HF_TOKEN", "")
+    hf_token: str = os.getenv("HUGGINGFACE_API_TOKEN", "")
     e2b_api_key: str = os.getenv("E2B_API_KEY", "")
     hf_tags: List[str] = field(
         default_factory=lambda: [
