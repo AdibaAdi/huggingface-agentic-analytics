@@ -53,7 +53,8 @@ st.write("Suggested queries:")
 for e in examples:
     st.markdown(f"- {e}")
 
-question = st.text_input("Natural language input", value=examples[0])
+question = st.text_input("Natural language input", placeholder="Ask a question about the tracked Hugging Face repos...")
+
 if st.button("Run Query"):
     route = route_question(question)
     text_answer, table_df = cached_query(route.action)
