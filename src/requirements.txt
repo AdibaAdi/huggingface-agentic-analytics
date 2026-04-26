@@ -1,0 +1,13 @@
+streamlit
+pandas
+polars
+sqlalchemy
+psycopg2-binary
+langchain
+langgraph
+openai
+huggingface_hub
+prophet
+statsmodels
+llama-index
+python-dotenv
