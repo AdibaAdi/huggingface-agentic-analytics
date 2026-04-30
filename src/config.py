@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List
 
 from dotenv import load_dotenv
 
-# Load environment variables from .env for local development.
-load_dotenv()
+# Load .env from project root (parent of src/) and current working dir.
+_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(_ROOT / ".env")
+load_dotenv()  # also load from CWD as a fallback
 
 
 @dataclass
@@ -42,8 +45,17 @@ class AppConfig:
     def has_hf_token(self) -> bool:
         return bool(self.hf_token)
 
+    @property
+    def has_e2b(self) -> bool:
+        return bool(self.e2b_api_key)
+
 
 def get_config() -> AppConfig:
     """Factory helper so modules can import lazily."""
-
     return AppConfig()
+
+
+# Make sure OPENAI_API_KEY env var is set for downstream libs (LlamaIndex, OpenAI SDK)
+_cfg = AppConfig()
+if _cfg.openai_api_key and not os.environ.get("OPENAI_API_KEY"):
+    os.environ["OPENAI_API_KEY"] = _cfg.openai_api_key

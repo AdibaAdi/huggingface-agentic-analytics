@@ -1,154 +1,176 @@
-"""Streamlit UI for Hugging Face agentic analytics."""
+"""Hugging Face Agentic Analytics -- Streamlit UI (Bonus 2 compliant).
+
+Flow per user prompt:
+  1. User types a natural-language question in a free text box.
+  2. LlamaIndex + GPT-4o-mini generates a self-contained Python script.
+  3. User picks ONE of 4 sandboxes from the dropdown:
+       - LlamaIndex Code Interpreter  (CodeInterpreterToolSpec)
+       - Docker Python Sandbox        (python:3.11-slim container)
+       - OpenAI Hosted Code Execution (Assistants API + Code Interpreter)
+       - E2B Cloud Sandbox            (e2b-code-interpreter)
+  4. The chosen sandbox executes the generated code.
+  5. We parse stdout for CSV tables and Plotly chart JSON, then render.
+
+There are NO hardcoded SQL queries, NO hardcoded Polars pipelines, and NO
+action-router enums. Every result -- text, table, chart -- comes from code
+that the LLM wrote at runtime in response to the user's prompt.
+"""
 
 from __future__ import annotations
 
+import json
+import time
+
+import plotly.io as pio
 import streamlit as st
 
-import charts
-from analytics_queries import resolve_action
+from code_generator import generate_python_code
 from config import get_config
 from ingest_hf_data import ingest_data
-from langchain_agent import route_question
+from output_parser import parse_stdout
+from sandboxes import SANDBOXES, get_sandbox
 
 st.set_page_config(page_title="Hugging Face Agentic Analytics", layout="wide")
-
 cfg = get_config()
 
+st.title("🤗 Hugging Face Agentic Analytics")
+st.caption(
+    "LlamaIndex agent → LLM-generated Python → execute in your chosen sandbox "
+    "(LlamaIndex CI / Docker / OpenAI Hosted / E2B)"
+)
 
-@st.cache_data(ttl=60)
-def cached_query(action: str):
-    return resolve_action(action)
-
-
-st.title("Hugging Face Agentic Analytics")
-st.caption("Natural language -> LLM router -> deterministic analytics action")
-
+# ----------------------------- Sidebar -------------------------------
 with st.sidebar:
     st.header("Setup / Status")
-    st.write(f"Database URL set: {'Yes' if cfg.database_url else 'No'}")
-    st.write(f"OPENAI_API_KEY set: {'Yes' if cfg.has_openai else 'No'}")
-    st.write(f"HUGGINGFACE_API_TOKEN set: {'Yes' if cfg.has_hf_token else 'No'}")
-    st.write("Tracked tags:")
+    st.write(f"DATABASE_URL set: {'✅' if cfg.database_url else '❌'}")
+    st.write(f"OPENAI_API_KEY: {'✅' if cfg.has_openai else '❌'}")
+    st.write(f"HUGGINGFACE_API_TOKEN: {'✅' if cfg.has_hf_token else '❌'}")
+    st.write(f"E2B_API_KEY: {'✅' if cfg.has_e2b else '❌'}")
+    st.write("**Tracked tags:**")
     st.code("\n".join(cfg.hf_tags))
 
-    if st.button("Ingest / Refresh Hugging Face Data"):
-        with st.spinner("Ingesting... this can take up to a minute"):
+    if st.button("Ingest / Refresh HF Data"):
+        with st.spinner("Pulling top 5 models per tag + their discussions..."):
             try:
                 summary = ingest_data()
                 st.success("Ingestion completed")
                 st.json(summary)
-                cached_query.clear()
             except Exception as exc:
                 st.error(f"Ingestion failed: {exc}")
 
-st.subheader("Ask a natural language question")
-examples = [
-    "Which Hugging Face model repo has the highest number of Community Discussions created?",
-    "Create a table of total discussions created for every repo for every day Monday-Sunday.",
-    "Show a chart of closed discussions per week.",
-    "Forecast pull requests for model gpt2.",
-]
-st.write("Example prompts (suggestions only):")
-for e in examples:
-    st.markdown(f"- {e}")
+    st.markdown("---")
+    st.markdown("**Bonus 2 sandbox selector**")
+    sandbox_label = st.selectbox(
+        "Code execution backend",
+        list(SANDBOXES.keys()),
+        index=0,
+        help="Choose which of the 4 alternatives executes the LLM-generated code.",
+    )
 
-question = st.text_input("Natural language prompt", placeholder="Type your own question...")
-model_id = st.text_input("Model ID (only needed for forecast actions)", value="")
+# ----------------------------- Main UI -------------------------------
+st.subheader("Ask any natural-language analytics question")
 
-if st.button("Run Query"):
+with st.expander("Example prompts (click to expand)", expanded=False):
+    st.markdown(
+        """
+**Text / table queries:**
+- Which Hugging Face model repo has the highest number of Community Discussions created?
+- Create a table of the total number of Discussions created for every repo for every day of the week (Monday-Sunday).
+- Which day of the week has the highest number of total Discussions created across all tracked Hugging Face repos?
+- Which day of the week has the highest number of total Discussions marked as 'Closed' for all Hugging Face repos?
+
+**Chart queries:**
+- Line chart: total Discussions over time across all models.
+- Pie chart: % distribution of total Discussions belonging to each model.
+- Bar chart: Likes count for every Model ID.
+- Bar chart: Downloads for every Model ID (used as 'forks' proxy).
+- Bar chart: closed Discussions per week.
+- Stacked bar chart: open vs closed Discussions for every Model.
+- Use Prophet to forecast created Discussions for every Model.
+- Use Prophet to forecast closed Discussions for every Model.
+- Use Statsmodels to forecast Pull Requests for every Model.
+- Use Statsmodels to forecast Commits for every Model.
+        """
+    )
+
+question = st.text_area(
+    "Your prompt",
+    placeholder="e.g. Show me a bar chart of likes for every model id.",
+    height=100,
+)
+
+show_code = st.checkbox("Show generated Python code", value=True)
+run_btn = st.button("🚀 Generate code and execute", type="primary")
+
+# ----------------------------- Execution -------------------------------
+if run_btn:
     if not question.strip():
-        st.error("Please enter a natural language prompt before running the query.")
+        st.error("Please type a natural-language question before running.")
+        st.stop()
+    if not cfg.has_openai:
+        st.error("OPENAI_API_KEY is missing. Set it in your .env file.")
         st.stop()
 
-    route = route_question(question)
-    st.caption(f"LLM selected action: `{route.action}`")
-    st.caption(f"Reason: {route.reason}")
-
-    if route.action == "error":
-        st.error(route.reason)
-        st.stop()
-
-    text_actions = {
-        "highest_discussions",
-        "table_discussions_weekday",
-        "day_most_created",
-        "day_most_closed",
-    }
-    chart_actions = {
-        "chart_total_discussions_over_time",
-        "chart_discussions_distribution_by_model",
-        "chart_likes_per_model",
-        "chart_downloads_per_model",
-        "chart_closed_discussions_per_week",
-        "chart_open_closed_per_model",
-        "forecast_created_discussions",
-        "forecast_closed_discussions",
-        "forecast_pull_requests",
-        "forecast_commits",
-    }
-    result_rendered = False
-
-    if route.action in text_actions:
-        text_answer, table_df = cached_query(route.action)
-        st.markdown("### Text Answer")
-        st.write(text_answer)
-
-        st.markdown("### Table Output")
-        if table_df.is_empty():
-            st.info("No table data to display.")
-        else:
-            st.dataframe(table_df.to_pandas(), use_container_width=True)
-        result_rendered = True
-
-    elif route.action in chart_actions:
-        chart_mapping = {
-            "chart_total_discussions_over_time": charts.line_total_discussions_over_time,
-            "chart_discussions_distribution_by_model": charts.pie_discussions_distribution_by_model,
-            "chart_likes_per_model": charts.bar_likes_per_model,
-            "chart_downloads_per_model": charts.bar_downloads_per_model,
-            "chart_closed_discussions_per_week": charts.bar_closed_discussions_per_week,
-            "chart_open_closed_per_model": charts.stacked_open_closed_per_model,
-        }
-        if route.action in {
-            "forecast_created_discussions",
-            "forecast_closed_discussions",
-            "forecast_pull_requests",
-            "forecast_commits",
-        } and not model_id.strip():
-            st.error(
-                "This forecast action requires a Model ID. Please enter a model ID in the sidebar field and run again."
-            )
+    # 1. Generate Python via LlamaIndex agent
+    with st.spinner("🧠 LLM is writing Python code for your question..."):
+        t0 = time.time()
+        try:
+            generated = generate_python_code(question)
+        except Exception as exc:
+            st.error(f"Code generation failed: {exc}")
             st.stop()
+        gen_seconds = time.time() - t0
 
-        if route.action == "forecast_created_discussions":
-            fig = charts.prophet_forecast_created_per_model(model_id)
-            st.info("Prophet forecast for created discussions.")
-        elif route.action == "forecast_closed_discussions":
-            fig = charts.prophet_forecast_closed_per_model(model_id)
-            st.info("Prophet forecast for closed discussions.")
-        elif route.action == "forecast_pull_requests":
-            fig, note = charts.statsmodels_placeholder_forecast(model_id, metric="pull_requests")
-            st.info(note)
-        elif route.action == "forecast_commits":
-            fig, note = charts.statsmodels_placeholder_forecast(model_id, metric="commits")
-            st.info(note)
-        else:
-            result = chart_mapping[route.action]()
-            if isinstance(result, tuple):
-                fig, message = result
-                if message:
-                    st.info(message)
-            else:
-                fig = result
+    st.success(f"Code generated in {gen_seconds:.2f}s")
+    if show_code:
+        with st.expander("📜 Generated Python code", expanded=False):
+            st.code(generated.code, language="python")
 
-        if fig:
+    # 2. Execute in chosen sandbox
+    sandbox = get_sandbox(sandbox_label)
+    with st.spinner(f"⚙️ Executing in: {sandbox_label} ..."):
+        result = sandbox.run(generated.code, cfg.database_url)
+
+    # 3. Render execution metadata
+    cols = st.columns(3)
+    cols[0].metric("Backend", result.backend)
+    cols[1].metric("Status", "OK" if result.ok else "FAILED")
+    cols[2].metric("Elapsed", f"{result.elapsed_seconds:.2f}s")
+    if result.notes:
+        st.caption(result.notes)
+
+    if not result.ok:
+        st.error("Sandbox execution failed.")
+        with st.expander("Error details", expanded=True):
+            st.code(result.stderr or "(no stderr)", language="bash")
+        st.stop()
+
+    # 4. Parse output
+    parsed = parse_stdout(result.stdout)
+
+    if parsed.no_data and not parsed.tables and not parsed.charts:
+        st.info("The query returned no data.")
+        st.stop()
+
+    if parsed.text_answer:
+        st.markdown("### 📝 Answer")
+        st.write(parsed.text_answer)
+
+    for i, df in enumerate(parsed.tables, start=1):
+        st.markdown(f"### 📊 Table {i}")
+        st.dataframe(df, use_container_width=True)
+
+    for i, chart_json in enumerate(parsed.charts, start=1):
+        st.markdown(f"### 📈 Chart {i}")
+        try:
+            fig = pio.from_json(json.dumps(chart_json))
             st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.warning("Not enough data available to generate this chart.")
-        result_rendered = True
+        except Exception as exc:
+            st.warning(f"Could not render chart {i}: {exc}")
+            with st.expander("Raw chart JSON"):
+                st.json(chart_json)
 
-    else:
-        st.error("Unsupported action selected by router.")
-
-    if result_rendered:
-        st.caption("This result was generated through LLM-based routing and database-backed analytics.")
+    with st.expander("🔍 Raw stdout (debug)", expanded=False):
+        st.code(result.stdout or "(empty)", language="text")
+        if result.stderr:
+            st.code(result.stderr, language="bash")

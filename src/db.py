@@ -1,4 +1,4 @@
-"""Database models and helpers."""
+"""Database models and helpers for Postgres."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ class ModelRepo(Base):
     pipeline_tag: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    discussions: Mapped[list[Discussion]] = relationship("Discussion", back_populates="repo")
+    discussions: Mapped[list["Discussion"]] = relationship("Discussion", back_populates="repo")
 
 
 class Discussion(Base):
