@@ -1,46 +1,81 @@
-# Panopto Demo Script (5–10 minutes)
+# Panopto Demo Script (5 to 10 minutes)
 
-## 1) Intro (45 seconds)
-- "This is `huggingface-agentic-analytics`, my class project for Bonus Assignment 1 and 2."
-- "It pulls top Hugging Face models by tags, stores model + discussion data in PostgreSQL, and answers natural-language questions with text, tables, and charts in Streamlit."
+A suggested walkthrough for the recorded live demo. Times are rough; aim
+for clarity over hitting exact minute marks.
 
-## 2) Architecture walkthrough (90 seconds)
-- Show root `README.md` architecture section.
-- Mention stack: Streamlit, Polars, PostgreSQL/SQLAlchemy, Hugging Face Hub API, LangChain routing with GPT-4o-mini fallback logic, Prophet/Statsmodels forecasting.
-- Mention safe code execution module (`src/code_executor.py`).
+## 1. Intro (45 seconds)
 
-## 3) Environment setup (60 seconds)
-- Show `.env.example` and explain required keys:
-  - DATABASE_URL
-  - OPENAI_API_KEY (optional but recommended)
-  - HF_TOKEN (optional)
-- Mention no real keys are committed.
+* "This is Hugging Face Agentic Analytics, my class project for Bonus
+  Assignment 1 and Bonus Assignment 2."
+* "It pulls top Hugging Face models by tag, stores model and discussion
+  data in PostgreSQL, and answers natural language questions with text,
+  tables, and charts in a Streamlit app."
+* "It also implements the Bonus 2 requirement: a single agent backed by
+  four hot swappable code execution sandboxes."
 
-## 4) Ingestion demo (90 seconds)
-- Run `python src/ingest_hf_data.py`.
-- Explain tags and top-5 selection per tag.
-- Highlight fallback limitation for forks/commits/PR fields.
+## 2. Architecture walkthrough (90 seconds)
 
-## 5) Streamlit app demo (2–3 minutes)
-- Run `streamlit run src/app.py`.
-- Show sidebar status and ingest button.
-- Enter required natural-language queries and execute.
-- Show text + table output.
-- Scroll through required charts:
-  - Total discussions over time
-  - Discussion % by model
-  - Likes/download bars
-  - Closed/week, open vs closed stacked
-  - Forecast charts (Prophet + Statsmodels fallback)
+* Show the root `README.md` architecture section.
+* Walk through the diagram: Streamlit prompt, LlamaIndex agent generates
+  Python, sandbox selector runs it, marker delimited stdout flows back to
+  the app, which renders tables and charts.
+* Mention the stack: Python 3.11, Polars, PostgreSQL with SQLAlchemy,
+  Hugging Face Hub API, LlamaIndex plus GPT 4o mini, Prophet and
+  Statsmodels for forecasting, Plotly for charts.
 
-## 6) Bonus Assignment 2 demo (90 seconds)
-- Open `src/bonus2_llamaindex_alternatives.py`.
-- Explain four alternatives:
-  1. LlamaIndex Code Interpreter tool path
-  2. Docker sandbox
-  3. OpenAI hosted code execution placeholder
-  4. E2B cloud sandbox path
-- Show comparative report and recommendation in `doc/comparative_analysis_report.md`.
+## 3. Environment setup (60 seconds)
 
-## 7) Close (20 seconds)
-- "This first version is intentionally simple, readable, and safe for class evaluation, with documented limitations and fallback behavior."
+* Show `.env.example` and explain required keys:
+  * `DATABASE_URL`
+  * `OPENAI_API_KEY`
+  * `HUGGINGFACE_API_TOKEN` (optional but recommended)
+  * `E2B_API_KEY` (optional)
+* Confirm no real keys are committed.
+* Show `src/requirements.txt` and the `uv pip install -r src/requirements.txt`
+  command.
+
+## 4. Ingestion demo (90 seconds)
+
+* From the repo root, run `python -m src.etl.run_pipeline`.
+* While it runs, walk through the ETL split: extract, transform, load.
+* When it finishes, show the JSON summary: how many models and
+  discussions were loaded, and any per repo errors (typically a 403 for
+  repos with discussions disabled).
+
+## 5. Streamlit app demo (2 to 3 minutes)
+
+* Run `streamlit run src/app/streamlit_app.py`.
+* Show the sidebar with setup status and ingestion button.
+* Visit the **Executive Summary** page and call out the headline
+  metrics.
+* Visit **Agentic Analytics**:
+  * Pick a backend in the dropdown.
+  * Paste the first required text or table prompt verbatim.
+  * Show the generated Python code in the expander.
+  * Show the rendered table or chart.
+  * Repeat for one chart prompt and one forecast prompt.
+* Briefly visit **Top Models**, **Anomaly Detection**, **Forecasting**,
+  and **Data Quality** so reviewers see they exist.
+
+## 6. Bonus Assignment 2 demo (90 seconds)
+
+* On the Agentic Analytics page, run the same prompt through two
+  different sandboxes back to back. Point out that the answer is
+  identical but the elapsed time differs.
+* Open `doc/comparative_analysis_report.md` and read the recommendations
+  section out loud.
+* If time permits, run `python -m src.app.run_comparative_analysis` to
+  demonstrate that the comparison is reproducible.
+
+## 7. Tests and methodology (45 seconds)
+
+* From the repo root, run `pytest tests/` and show the green test count.
+* Open `doc/methodology.md` and `doc/limitations.md` to demonstrate that
+  the project is documented for non technical reviewers.
+
+## 8. Close (20 seconds)
+
+* "This project takes both Bonus assignments seriously and adds a
+  reproducible analyst layer on top: documented methodology, data
+  quality validation, anomaly detection, executive summary, and tests."
+* "Thanks for watching."
