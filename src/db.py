@@ -1,4 +1,14 @@
-"""Database models and helpers for Postgres."""
+"""SQLAlchemy ORM models and engine helpers for the PostgreSQL data layer.
+
+Two tables back the entire project:
+
+* ``model_repos``  : one row per Hugging Face model repository tracked.
+* ``discussions``  : one row per community discussion (issue or pull request)
+  attached to a tracked repository.
+
+Both tables enforce uniqueness so the ETL pipeline can run idempotently
+without producing duplicate rows on a re-ingest.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +25,14 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    Session,
+    mapped_column,
+    relationship,
+    sessionmaker,
+)
 
 from config import get_config
 
@@ -25,6 +42,8 @@ class Base(DeclarativeBase):
 
 
 class ModelRepo(Base):
+    """One row per Hugging Face model repository tracked by the pipeline."""
+
     __tablename__ = "model_repos"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -35,13 +54,22 @@ class ModelRepo(Base):
     downloads: Mapped[int] = mapped_column(Integer, default=0)
     pipeline_tag: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_modified: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    discussions: Mapped[list["Discussion"]] = relationship("Discussion", back_populates="repo")
+    discussions: Mapped[list["Discussion"]] = relationship(
+        "Discussion", back_populates="repo"
+    )
 
 
 class Discussion(Base):
+    """One row per community discussion or pull request on a tracked repository."""
+
     __tablename__ = "discussions"
-    __table_args__ = (UniqueConstraint("repo_id", "hf_discussion_num", name="uq_repo_discussion_num"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "repo_id", "hf_discussion_num", name="uq_repo_discussion_num"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     repo_id: Mapped[int] = mapped_column(ForeignKey("model_repos.id"), index=True)
@@ -61,6 +89,7 @@ _SessionLocal = None
 
 
 def get_engine():
+    """Return a process wide SQLAlchemy engine, creating it on first use."""
     global _engine
     if _engine is None:
         cfg = get_config()
@@ -69,6 +98,7 @@ def get_engine():
 
 
 def init_db() -> None:
+    """Create tables if they do not already exist."""
     engine = get_engine()
     Base.metadata.create_all(engine)
 
@@ -76,12 +106,15 @@ def init_db() -> None:
 def get_sessionmaker():
     global _SessionLocal
     if _SessionLocal is None:
-        _SessionLocal = sessionmaker(bind=get_engine(), autoflush=False, autocommit=False, future=True)
+        _SessionLocal = sessionmaker(
+            bind=get_engine(), autoflush=False, autocommit=False, future=True
+        )
     return _SessionLocal
 
 
 @contextmanager
 def session_scope():
+    """Context manager that commits on success and rolls back on error."""
     session_cls = get_sessionmaker()
     session: Session = session_cls()
     try:

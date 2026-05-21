@@ -1,4 +1,10 @@
-"""Configuration utilities for the Hugging Face Agentic Analytics app."""
+"""Runtime configuration loaded from environment variables.
+
+This module reads ``.env`` from the repository root and exposes a typed
+``AppConfig`` dataclass to the rest of the application. Centralizing
+configuration in one place keeps secrets out of source code and makes
+it obvious which environment variables a given run depends on.
+"""
 
 from __future__ import annotations
 
@@ -9,18 +15,20 @@ from typing import List
 
 from dotenv import load_dotenv
 
-# Load .env from project root (parent of src/) and current working dir.
+# Load .env from the repository root (parent of src/) and also from the
+# current working directory as a fallback when running from elsewhere.
 _ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(_ROOT / ".env")
-load_dotenv()  # also load from CWD as a fallback
+load_dotenv()
 
 
 @dataclass
 class AppConfig:
-    """Runtime config loaded from environment variables."""
+    """Typed runtime config. All fields are populated from environment variables."""
 
     database_url: str = os.getenv(
-        "DATABASE_URL", "postgresql+psycopg2://postgres:postgres@localhost:5432/hf_analytics"
+        "DATABASE_URL",
+        "postgresql+psycopg2://postgres:postgres@localhost:5432/hf_analytics",
     )
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -51,11 +59,12 @@ class AppConfig:
 
 
 def get_config() -> AppConfig:
-    """Factory helper so modules can import lazily."""
+    """Factory helper so modules can import config lazily."""
     return AppConfig()
 
 
-# Make sure OPENAI_API_KEY env var is set for downstream libs (LlamaIndex, OpenAI SDK)
+# Make sure OPENAI_API_KEY is exported for downstream libraries (LlamaIndex, OpenAI SDK)
+# even when the caller only set it inside .env.
 _cfg = AppConfig()
 if _cfg.openai_api_key and not os.environ.get("OPENAI_API_KEY"):
     os.environ["OPENAI_API_KEY"] = _cfg.openai_api_key
