@@ -2,7 +2,7 @@
 
 A reproducible Python data pipeline and agentic analytics application that collects Hugging Face model and discussion metadata via the public Hub API, cleans and validates the data, stores it in PostgreSQL, and supports natural language analytical questions answered with text, tables, and Plotly visualizations.
 
-This project was originally built for **CS 487 Bonus Assignments 1 and 2** and was extended into a portfolio grade data analyst case study covering ETL, SQL aggregation, data quality validation, anomaly detection, time series forecasting, and clear methodology and limitations documentation.
+This project was originally built for **CS587 Bonus Assignments 1 and 2** and was extended into a portfolio grade data analyst case study covering ETL, SQL aggregation, data quality validation, anomaly detection, time series forecasting, and clear methodology and limitations documentation.
 
 ## Highlights
 
