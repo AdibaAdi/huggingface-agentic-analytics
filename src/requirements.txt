@@ -1,17 +1,22 @@
+# Web application
 streamlit>=1.30
+
+# Data layer
 polars>=1.0
 pandas>=2.0
 sqlalchemy>=2.0
 psycopg2-binary>=2.9
 python-dotenv>=1.0
+
+# Hugging Face Hub client
 huggingface_hub>=0.24
 
-# LlamaIndex agent + code interpreter tool (Bonus 2 alternative #1)
+# LlamaIndex agent and code interpreter tool (Bonus 2 alternative #1)
 llama-index>=0.11
 llama-index-llms-openai>=0.2
 llama-index-tools-code-interpreter>=0.2
 
-# OpenAI SDK (drives both LlamaIndex LLM calls and the Hosted CI sandbox)
+# OpenAI SDK powers both the LlamaIndex LLM calls and the Hosted CI sandbox
 openai>=1.50
 
 # E2B cloud sandbox (Bonus 2 alternative #4)
@@ -21,5 +26,8 @@ e2b-code-interpreter>=1.0
 prophet>=1.1
 statsmodels==0.14.5
 
-# Charts
+# Charting
 plotly>=5.20
+
+# Testing
+pytest>=8.0
